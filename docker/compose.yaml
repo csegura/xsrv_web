@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2026 Carlos Segura Sanz
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# xsrv-web with an xterm in a second container.
+#   docker compose -f docker/compose.yaml up --build
+# Then open http://localhost:8080/?token=<XSRV_TOKEN>
+services:
+  xsrv-web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      # Local only. For remote use, put a reverse proxy with TLS in front (docs/security.md).
+      - "127.0.0.1:8080:8080"
+    environment:
+      # Choose your own token. The server refuses to listen on a network address without one.
+      XSRV_TOKEN: "${XSRV_TOKEN:?set XSRV_TOKEN to a long random string}"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - x11-socket:/tmp/.X11-unix
+
+  xterm:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.client
+    depends_on:
+      - xsrv-web
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /home/client
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - x11-socket:/tmp/.X11-unix
+
+volumes:
+  x11-socket:

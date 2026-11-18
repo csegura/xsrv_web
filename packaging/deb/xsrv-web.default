@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 Carlos Segura Sanz
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# Settings of the xsrv-web service. All settings: /usr/share/doc/xsrv-web/README.txt
+# This file holds secrets: keep it readable by root only (mode 0600).
+# After a change: sudo systemctl restart xsrv-web
+
+# The web page listens on every interface (0.0.0.0) when a token is set, which the package does at
+# install. The port is XSRV_PORT. Without TLS the token goes over the network in clear text: for use
+# outside a trusted network, put a reverse proxy with TLS in front, and set XSRV_ADDR=127.0.0.1:8080
+# (the full address wins over XSRV_PORT).
+XSRV_PORT=8080
+#XSRV_ADDR=127.0.0.1:8080
+
+# The page token. The package made a random one at install (/var/lib/xsrv-web/token); print it and
+# the page address with: sudo xsrv-web token. A value here wins: 16 to 128 characters of
+# A-Z a-z 0-9 . _ ~ -. Set XSRV_TOKEN= (empty) to turn the token off on 127.0.0.1.
+#XSRV_TOKEN=
+
+# The X socket. X clients use DISPLAY=:1. On a desktop, :1 may already be used by a login screen
+# or a second session: then choose another number, for example /tmp/.X11-unix/X10 (DISPLAY=:10).
+# The socket must stay in /tmp/.X11-unix, the only folder the service may write.
+XSRV_X11_SOCKET=/tmp/.X11-unix/X1
+
+# MIT-MAGIC-COOKIE-1 (32 hex digits). Set it, together with XSRV_TOKEN, when other users share this
+# machine, and give it to the X clients with: xauth add :1 MIT-MAGIC-COOKIE-1 <cookie>
+#XSRV_X11_COOKIE=
+
+#XSRV_KEYMAP=us
+#XSRV_WM=1
+#XSRV_XKB=1
+
+# lz4 (the default) is the fastest. zstd sends fewer bytes, for a slow network.
+#XSRV_COMPRESSION=lz4

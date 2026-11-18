@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 Carlos Segura Sanz
+# SPDX-License-Identifier: AGPL-3.0-only
+
+version = 1
+
+# Files that cannot hold a comment header: documents, images, data and locks.
+[[annotations]]
+path = [
+  "**/*.md",
+  "**/*.png",
+  "**/*.mp4",
+  "**/*.txt",
+  "**/*.json",
+  "**/*.h264",
+  "**/*.lock",
+  "LICENSE",
+  ".gitignore",
+  ".dockerignore",
+  "packaging/deb/control",
+  "packaging/deb/copyright",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Carlos Segura Sanz"
+SPDX-License-Identifier = "AGPL-3.0-only"

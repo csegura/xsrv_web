@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 Carlos Segura Sanz
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[package]
+name = "xsrv-wasm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wire = { path = "../wire" }
+wasm-bindgen = "=0.2.130"
+ruzstd = { version = "0.9", default-features = false, features = ["std"] }
+lz4_flex = { version = "0.14", default-features = false, features = ["std", "safe-decode"] }
+web-sys = { version = "0.3", features = ["CanvasRenderingContext2d", "CssStyleDeclaration", "HtmlCanvasElement", "HtmlElement", "ImageData"] }
+
+[dev-dependencies]
+zstd = { version = "0.13", default-features = false }
+lz4_flex = { version = "0.14", default-features = false, features = ["std", "safe-encode", "safe-decode"] }

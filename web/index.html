@@ -1,0 +1,102 @@
+<!doctype html>
+<!--
+  SPDX-FileCopyrightText: 2026 Carlos Segura Sanz
+  SPDX-License-Identifier: AGPL-3.0-only
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>xsrv-web</title>
+<link rel="icon" type="image/png" sizes="32x32" href="./favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="./favicon-192.png">
+<link rel="apple-touch-icon" href="./favicon-192.png">
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<textarea id="paste-target" aria-hidden="true" tabindex="-1" autocomplete="off" spellcheck="false"></textarea>
+<div id="message" role="status" hidden></div>
+<div id="bar">
+  <span id="grip" role="button" tabindex="0" aria-label="Move these buttons" title="Drag to move these buttons anywhere. With the keyboard, use the arrow keys (Shift for bigger steps).">&#x2807;</span>
+  <button id="super-corner" class="super-key" type="button" title="Win / Cmd: hold the Windows key for the next key you press. Click again to cancel.">Win</button>
+  <span id="macro-buttons"></span>
+  <button id="screenshot" type="button" title="Screenshot: click saves a PNG file of the screen, Shift+click copies it to the clipboard">&#x1F4F7;</button>
+  <button id="settings-button" type="button" title="Settings" aria-controls="settings" aria-expanded="false">&#x2699;</button>
+  <button id="fullscreen" type="button" title="Full screen with the keyboard locked (Chromium): the Escape and Windows keys go to the screen">&#x26F6;</button>
+</div>
+<section id="settings" role="dialog" aria-labelledby="settings-title" hidden>
+  <header>
+    <h1 id="settings-title">Settings</h1>
+    <button id="settings-close" class="close" type="button" aria-label="Close settings">&times;</button>
+  </header>
+  <div id="tabs" role="tablist" aria-label="Settings">
+    <button role="tab" id="tab-keyboard" aria-controls="pane-keyboard" data-pane="keyboard" type="button">Keyboard</button>
+    <button role="tab" id="tab-mouse" aria-controls="pane-mouse" data-pane="mouse" type="button">Mouse</button>
+    <button role="tab" id="tab-clipboard" aria-controls="pane-clipboard" data-pane="clipboard" type="button">Clipboard</button>
+    <button role="tab" id="tab-buttons" aria-controls="pane-buttons" data-pane="buttons" type="button">Buttons</button>
+    <button role="tab" id="tab-macros" aria-controls="pane-macros" data-pane="macros" type="button">Macros</button>
+  </div>
+
+  <div class="pane" id="pane-keyboard" role="tabpanel" aria-labelledby="tab-keyboard" hidden>
+    <label class="field"><span>Keyboard layout (whole session)</span><select id="layout"></select></label>
+    <label class="field"><span>Win / Cmd key is</span><select id="super-key"></select></label>
+    <label class="check"><input id="fullscreen-click" type="checkbox"> Full screen with the keyboard locked at my first click (Chromium: the only way to keep the Windows key)</label>
+    <h2>Replace a key</h2>
+    <p class="help">When you press the first key, the screen gets the second one.</p>
+    <ul class="list" id="subs"></ul>
+    <div class="pair">
+      <input class="capture" id="sub-from" readonly placeholder="Click, press a key" aria-label="Key to replace">
+      <span aria-hidden="true">&rarr;</span>
+      <input class="capture" id="sub-to" readonly placeholder="Click, press a key" aria-label="Key to send">
+    </div>
+    <div class="buttons"><button id="sub-add" type="button">Add</button></div>
+    <div class="error" id="sub-error" role="alert"></div>
+    <h2>Send keys</h2>
+    <div class="buttons" id="keys">
+      <button id="super" class="super-key" type="button" title="Hold the Windows (Cmd) key for the next key you press. Click again to cancel.">Win / Cmd</button>
+    </div>
+  </div>
+
+  <div class="pane" id="pane-mouse" role="tabpanel" aria-labelledby="tab-mouse" hidden>
+    <label class="field"><span>Wheel speed</span><select id="wheel-speed"></select></label>
+  </div>
+
+  <div class="pane" id="pane-clipboard" role="tabpanel" aria-labelledby="tab-clipboard" hidden>
+    <h2>Access of this page</h2>
+    <p class="status" id="clip-status" role="status"></p>
+    <div class="buttons"><button id="clip-allow" class="primary" type="button" hidden>Allow clipboard access</button></div>
+    <h2>Selection</h2>
+    <label class="check"><input id="copy-on-select" type="checkbox"> Selecting text in a program also copies it to the clipboard</label>
+    <p class="help">With this off, only a copy command (Ctrl+C, Ctrl+Shift+C) reaches the clipboard, and a selection never replaces it. A middle click in a program always pastes the selection.</p>
+  </div>
+
+  <div class="pane" id="pane-buttons" role="tabpanel" aria-labelledby="tab-buttons" hidden>
+    <label class="field"><span>Place of the buttons</span><select id="corner-place"></select></label>
+    <p class="help">Drag the &#x2807; handle at the left of the buttons to put them anywhere.</p>
+    <div class="buttons"><button id="bar-reset" type="button">Back to top right</button></div>
+    <h2>Shown in the bar</h2>
+    <label class="check"><input id="corner-super" type="checkbox"> Win button</label>
+    <label class="check"><input id="corner-screenshot" type="checkbox"> Screenshot button</label>
+  </div>
+
+  <div class="pane" id="pane-macros" role="tabpanel" aria-labelledby="tab-macros" hidden>
+    <ul class="list" id="macro-list"></ul>
+    <form id="macro-form" autocomplete="off">
+      <h2 id="macro-form-title">New macro</h2>
+      <label class="field"><span>Name</span><input type="text" id="macro-name" maxlength="40"></label>
+      <label class="field"><span>Hotkey (optional): click, then press the keys</span><input class="capture" id="macro-hotkey" readonly placeholder="For example Ctrl+Alt+M"></label>
+      <label class="field"><span>Steps</span><textarea id="macro-steps" spellcheck="false" placeholder="Super+e, wait 300&#10;Ctrl+l&#10;paste: https://example.org"></textarea></label>
+      <p class="help">One step per line or separated by commas. A key combo (<code>Ctrl+Alt+t</code>, <code>Return</code>), <code>wait 300</code> (milliseconds) or <code>paste: text</code> (the rest of the line). A hotkey needs Ctrl, Alt, Shift or Win, or is a function key. The browser keeps some combos (Ctrl+W, Win): choose another.</p>
+      <label class="check"><input id="macro-bar" type="checkbox"> A button in the bar</label>
+      <div class="error" id="macro-error" role="alert"></div>
+      <div class="buttons">
+        <button id="macro-save" class="primary" type="submit">Save</button>
+        <button id="macro-cancel" type="button" hidden>Cancel</button>
+      </div>
+    </form>
+  </div>
+</section>
+<canvas id="screen" width="640" height="480" tabindex="0"></canvas>
+<script type="module" src="./main.js"></script>
+</body>
+</html>

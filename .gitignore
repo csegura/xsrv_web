@@ -1,0 +1,16 @@
+target/
+dist/
+web/pkg/
+fuzz/target
+fuzz/artifacts
+fuzz/corpus
+.claude/
+__pycache__/
+
+# Working notes: not in git
+/CLAUDE.md
+/PLAN.md
+/HISTORY.md
+/TODO.md
+/errors.md
+/vmd-manager.md

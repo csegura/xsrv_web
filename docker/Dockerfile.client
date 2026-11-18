@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 Carlos Segura Sanz
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# An X client for the compose example. It shares the X socket of the xsrv-web container.
+FROM debian:bookworm-slim
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends xterm \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --system --uid 10002 --create-home --shell /bin/sh client
+
+ENV DISPLAY=:1
+USER client
+CMD ["xterm", "-geometry", "80x24+20+20"]

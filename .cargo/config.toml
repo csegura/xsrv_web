@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Carlos Segura Sanz
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# The page module uses WebAssembly SIMD (all browsers since 2023). It makes the pixel
+# conversion and the decoder of the page faster.
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "target-feature=+simd128"]

@@ -1,0 +1,23 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Carlos Segura Sanz
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# Disables the service after a removal. `systemctl disable` also works without a running systemd
+# (in a chroot), so no link is left behind. The system user stays after a purge, as Debian does
+# for system users: files that it owns may remain. A purge deletes the generated token.
+set -e
+
+case "$1" in
+    purge)
+        rm -rf /var/lib/xsrv-web
+        ;;
+esac
+
+case "$1" in
+    remove | purge)
+        systemctl --no-reload disable xsrv-web.service >/dev/null 2>&1 || true
+        if [ -d /run/systemd/system ]; then
+            systemctl daemon-reload || true
+        fi
+        ;;
+esac

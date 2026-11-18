@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: 2026 Carlos Segura Sanz
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[Unit]
+Description=xsrv-web, an X11 server whose screen is a web page
+Documentation=file:///usr/share/doc/xsrv-web/README.txt
+# A non-loopback XSRV_ADDR needs its address up before the server binds it.
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=xsrv-web
+Group=xsrv-web
+# The token that the package made at install; a XSRV_TOKEN in /etc/default/xsrv-web wins over it.
+EnvironmentFile=-/var/lib/xsrv-web/token
+EnvironmentFile=/etc/default/xsrv-web
+Environment=XSRV_WEB_DIR=/usr/share/xsrv-web/web
+ExecStart=/usr/bin/xsrv-web
+Restart=on-failure
+RestartSec=2s
+# Each X client holds its socket and up to 32 passed descriptors (MIT-SHM), and 256 segments may be
+# open: more than the default soft limit of 1024 with many clients.
+LimitNOFILE=8192
+# The X socket must accept the X clients of every user, as an Xorg socket does; the access control
+# is XSRV_X11_COOKIE. The server creates no other files, and ffmpeg (XSRV_VIDEO) writes only to
+# its pipes.
+UMask=0000
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=yes
+# X clients connect to the socket in /tmp/.X11-unix, so /tmp is not private. systemd creates this
+# folder at boot (tmpfiles.d/x11.conf); the unit cannot start without it.
+ReadWritePaths=/tmp/.X11-unix
+
+[Install]
+WantedBy=multi-user.target

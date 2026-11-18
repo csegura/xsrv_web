@@ -1,0 +1,51 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Carlos Segura Sanz
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# Creates the service user and a random page token. The service is not enabled or started on
+# install: the X socket number may be taken on a desktop. An upgrade restarts a running service; a
+# failed removal starts an enabled service again.
+set -e
+
+# The token goes to its own file, not to the conffile /etc/default/xsrv-web, so that an upgrade
+# never asks about a changed settings file. `sudo xsrv-web token` prints it.
+make_token() {
+    dir=/var/lib/xsrv-web
+    file="$dir/token"
+    [ -e "$file" ] && return 0
+    if [ -n "$2" ]; then
+        echo "xsrv-web: the page now needs a token (unless /etc/default/xsrv-web sets XSRV_TOKEN);" \
+            "print its address with: sudo xsrv-web token"
+    fi
+    mkdir -p "$dir"
+    chmod 700 "$dir"
+    token=$(head -c 24 /dev/urandom | base64 | tr '+/' '-_')
+    (umask 077 && printf 'XSRV_TOKEN=%s\n' "$token" > "$file.new")
+    mv "$file.new" "$file"
+}
+
+case "$1" in
+    configure)
+        if ! getent group xsrv-web >/dev/null; then
+            groupadd --system xsrv-web
+        fi
+        if ! getent passwd xsrv-web >/dev/null; then
+            useradd --system --gid xsrv-web --no-create-home --home-dir /nonexistent \
+                --shell /usr/sbin/nologin xsrv-web
+        fi
+        make_token "$@"
+        ;;
+esac
+
+case "$1" in
+    configure | abort-upgrade | abort-deconfigure | abort-remove)
+        if [ -d /run/systemd/system ]; then
+            systemctl daemon-reload || true
+            if [ "$1" = "configure" ] && [ -n "$2" ]; then
+                deb-systemd-invoke try-restart xsrv-web.service || true
+            elif [ "$1" = "abort-remove" ] && systemctl --quiet is-enabled xsrv-web.service; then
+                deb-systemd-invoke start xsrv-web.service || true
+            fi
+        fi
+        ;;
+esac

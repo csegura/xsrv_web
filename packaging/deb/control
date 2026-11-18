@@ -1,0 +1,15 @@
+Package: xsrv-web
+Version: @VERSION@
+Architecture: @ARCH@
+Maintainer: @MAINTAINER@
+Installed-Size: @SIZE@
+Depends: libc6 (>= @GLIBC@), libgcc-s1
+Recommends: xauth
+Suggests: ffmpeg
+Section: x11
+Priority: optional
+Description: X11 server whose screen is a web page
+ xsrv-web is an X11 server written in Rust. X clients draw on it as on any
+ X server, and a web page shows the screen and sends the keyboard and the
+ mouse. It has RENDER, SHAPE, MIT-SHM, XFIXES and RANDR, a built-in window
+ manager, and runs with external managers such as i3.

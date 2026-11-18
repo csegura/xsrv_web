@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 Carlos Segura Sanz
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[package]
+name = "xsrv-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+xsrv-server = { path = "../crates/xsrv-server" }
+
+[[bin]]
+name = "requests"
+path = "fuzz_targets/requests.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

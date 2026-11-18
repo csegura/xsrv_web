@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: 2026 Carlos Segura Sanz
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[package]
+name = "xsrv-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+wire = { path = "../wire" }
+axum = { version = "0.8", features = ["ws", "query"] }
+bytes = "1"
+lz4_flex = { version = "0.14", default-features = false, features = ["std", "safe-encode", "safe-decode"] }
+tokio = { version = "1", features = ["rt", "macros", "net", "time", "io-util", "sync", "process", "signal"] }
+tower-http = { version = "0.6", features = ["fs"] }
+font8x8 = { version = "0.3", default-features = false }
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+zstd = { version = "0.13", default-features = false }
+# The XKEYBOARD requests and replies: generated from xcb-proto, so the complex layouts are right.
+x11rb-protocol = { version = "0.13", default-features = false, features = ["std", "xkb", "request-parsing"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+x11rb = { version = "0.13", features = ["all-extensions"] }
+
+# The program is called xsrv-web; the crate keeps its name.
+[[bin]]
+name = "xsrv-web"
+path = "src/main.rs"
+
+[[bench]]
+name = "updates"
+harness = false
