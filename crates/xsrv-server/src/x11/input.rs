@@ -679,6 +679,19 @@ impl State {
                         self.input.replay_since = Some(std::time::Instant::now());
                         self.tick_wake.notify_one();
                     }
+                    // The press that starts a passive grab always reaches the client that holds
+                    // it, also when the event mask of the grab does not select ButtonPress, as in
+                    // Xorg. Window managers (dtwm, mwm) grab with ButtonRelease only, and wait for
+                    // the press to give the focus and to call AllowEvents.
+                    if !grab.owner_events && grab.event_mask & BUTTON_PRESS == 0 {
+                        let event = Event::Button {
+                            press: true,
+                            fields: self.pointer_fields(grab.window, button),
+                        };
+                        self.send_event_to(grab.client, &event);
+                        self.input.buttons |= bit;
+                        return;
+                    }
                 }
             }
             self.deliver_button_press(button);

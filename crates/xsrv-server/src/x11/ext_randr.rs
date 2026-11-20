@@ -213,7 +213,7 @@ impl State {
 
     /// The monitors side by side: the screen is cut into `monitors` columns of equal width, and the
     /// last one takes what is left. Returns (x, width) of monitor `index`.
-    fn monitor_columns(&self, index: usize) -> (u16, u16) {
+    pub(super) fn monitor_columns(&self, index: usize) -> (u16, u16) {
         let (width, _) = self.screen_size();
         let count = self.monitors.max(1) as u16;
         let each = width / count;

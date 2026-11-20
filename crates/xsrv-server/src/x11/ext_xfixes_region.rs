@@ -140,9 +140,11 @@ impl State {
                 self.gc(gc)?;
                 if id == 0 {
                     self.clips.remove(&gc);
+                    self.clip_masks.remove(&gc);
                 } else {
                     let rects = region::translate(self.region(id)?, x, y);
                     self.clips.insert(gc, rects);
+                    self.clip_masks.remove(&gc);
                 }
             }
             21 => {

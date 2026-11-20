@@ -60,6 +60,8 @@ fn draw_glyph(surface: &mut Surface, x: i32, baseline: i32, code: u16, gc: &Gc, 
     }
 }
 
+const MAX_FONT_PATH_ENTRIES: usize = 64;
+
 // A glyph is one cell of `Surface::draw_cells`.
 const _: () = assert!(GLYPH_WIDTH as usize == CELL_WIDTH);
 
@@ -199,6 +201,45 @@ impl State {
             w.bytes(name.as_bytes());
         }
         Ok(Reply::new(0, w))
+    }
+
+    /// GetFontPath: the path that clients set, or the built-in one.
+    pub fn get_font_path(&self, req: &Request) -> Result<Reply, XError> {
+        req.reader().end()?;
+        let mut w = Writer::new(req.endian);
+        w.u16(self.font_path.len() as u16);
+        w.zeros(22);
+        let mut strings = 0;
+        for path in &self.font_path {
+            w.u8(path.len() as u8);
+            w.bytes(path);
+            strings += 1 + path.len();
+        }
+        w.zeros(padding(strings));
+        Ok(Reply::new(0, w))
+    }
+
+    /// SetFontPath: kept as it is, with limits. The server has one font, so it changes nothing
+    /// that a client sees, but `xset fp+` (the Common Desktop Environment runs it at the start of a
+    /// session) must not fail.
+    pub fn set_font_path(&mut self, req: &Request) -> Result<(), XError> {
+        let mut r = req.reader();
+        let count = usize::from(r.u16()?);
+        r.skip(2)?;
+        if count > MAX_FONT_PATH_ENTRIES {
+            return Err(XError::Value(count as u32));
+        }
+        let mut path = Vec::with_capacity(count);
+        for _ in 0..count {
+            let len = usize::from(r.u8()?);
+            path.push(r.bytes(len)?.to_vec());
+        }
+        // The strings are padded to 4 bytes together, and the request ends there.
+        let used: usize = path.iter().map(|p| 1 + p.len()).sum();
+        r.skip(padding(used))?;
+        r.end()?;
+        self.font_path = path;
+        Ok(())
     }
 
     pub fn image_text8(&mut self, req: &Request) -> Result<(), XError> {

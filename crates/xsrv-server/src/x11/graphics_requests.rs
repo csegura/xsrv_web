@@ -32,6 +32,8 @@ const GC_TILE_Y_ORIGIN: u32 = 0x2000;
 const GC_FONT: u32 = 0x4000;
 const GC_SUBWINDOW_MODE: u32 = 0x8000;
 const GC_GRAPHICS_EXPOSURES: u32 = 0x1_0000;
+const GC_CLIP_X_ORIGIN: u32 = 0x2_0000;
+const GC_CLIP_Y_ORIGIN: u32 = 0x4_0000;
 const GC_CLIP_MASK: u32 = 0x8_0000;
 const GC_DASH_LIST: u32 = 0x20_0000;
 const GC_ARC_MODE: u32 = 0x40_0000;
@@ -56,7 +58,9 @@ struct GcValues {
     stipple: Option<u32>,
     tile_x: Option<i32>,
     tile_y: Option<i32>,
-    pixmap_refs: Vec<(&'static str, u32)>,
+    clip_mask: Option<u32>,
+    clip_x: Option<i32>,
+    clip_y: Option<i32>,
     font: Option<u32>,
     fill_rule: Option<u8>,
     arc_mode: Option<u8>,
@@ -123,7 +127,9 @@ fn read_gc_values(r: &mut Reader, mask: u32) -> Result<GcValues, XError> {
             GC_TILE_X_ORIGIN => values.tile_x = Some(i32::from(value as i16)),
             GC_TILE_Y_ORIGIN => values.tile_y = Some(i32::from(value as i16)),
             GC_CLIP_MASK if value == 0 => values.clear_clip = true,
-            GC_CLIP_MASK => values.pixmap_refs.push(("clip mask", value)),
+            GC_CLIP_X_ORIGIN => values.clip_x = Some(i32::from(value as i16)),
+            GC_CLIP_Y_ORIGIN => values.clip_y = Some(i32::from(value as i16)),
+            GC_CLIP_MASK => values.clip_mask = Some(value),
             GC_FONT => values.font = Some(value),
             GC_SUBWINDOW_MODE => values.subwindow_mode = Some(at_most(value, 1)?),
             GC_GRAPHICS_EXPOSURES => values.graphics_exposures = Some(at_most(value, 1)? == 1),
@@ -288,6 +294,7 @@ impl State {
         values.apply(&mut gc);
         self.gcs.insert(id, gc);
         self.owners.insert(id, req.client);
+        self.update_clip_mask(id, &values);
         Ok(())
     }
 
@@ -301,8 +308,10 @@ impl State {
         values.apply(&mut gc);
         if values.clear_clip {
             self.clips.remove(&id);
+            self.clip_masks.remove(&id);
         }
         self.gcs.insert(id, gc);
+        self.update_clip_mask(id, &values);
         Ok(())
     }
 
@@ -312,6 +321,7 @@ impl State {
         r.end()?;
         self.gcs.remove(&id).ok_or(XError::GContext(id))?;
         self.clips.remove(&id);
+        self.clip_masks.remove(&id);
         self.owners.remove(&id);
         Ok(())
     }
@@ -335,11 +345,37 @@ impl State {
             return Err(XError::Value(req.detail.into()));
         }
         self.clips.insert(id, rects);
+        self.clip_masks.remove(&id);
         Ok(())
     }
 
-    /// A tile has the depth of the GC and a stipple is a bitmap. Clip masks are not drawn yet,
-    /// so they are refused instead of ignored. A font must be open.
+    /// A clip mask given as a bitmap becomes the rectangles of its set pixels, moved by the clip
+    /// origin, and drawing then uses them as it uses SetClipRectangles. The bitmap is read when the
+    /// GC is set, as most clients (Xpm, cairo) do not change it afterwards. A new origin moves the
+    /// rectangles of the mask that the GC already has.
+    fn update_clip_mask(&mut self, id: u32, values: &GcValues) {
+        let existing = self.clip_masks.get(&id).copied();
+        let pixmap = match values.clip_mask {
+            Some(0) => return,
+            Some(pixmap) => pixmap,
+            None => match existing {
+                Some(mask) if values.clip_x.is_some() || values.clip_y.is_some() => mask.pixmap,
+                _ => return,
+            },
+        };
+        let origin = (
+            values.clip_x.or(existing.map(|m| m.origin.0)).unwrap_or(0),
+            values.clip_y.or(existing.map(|m| m.origin.1)).unwrap_or(0),
+        );
+        let Some(pixmap_data) = self.pixmaps.get(&pixmap) else {
+            return;
+        };
+        let rects = bitmap_rects(&pixmap_data.surface, origin);
+        self.clip_masks.insert(id, ClipMask { pixmap, origin });
+        self.clips.insert(id, rects);
+    }
+
+    /// A tile has the depth of the GC, and a stipple and a clip mask are bitmaps. A font must be open.
     fn check_unsupported(&mut self, values: &GcValues, gc_depth: u8) -> Result<(), XError> {
         if let Some(tile) = values.tile {
             let (_, _, depth) = self.pixmap_info(tile).ok_or(XError::Pixmap(tile))?;
@@ -353,15 +389,11 @@ impl State {
                 return Err(XError::Match);
             }
         }
-        if let Some(&(what, pixmap)) = values.pixmap_refs.first() {
-            return Err(if self.pixmaps.contains_key(&pixmap) {
-                self.log_once(format!("gc {what}"), || {
-                    format!("xsrv-web: a GC {what} is not supported yet")
-                });
-                XError::Implementation
-            } else {
-                XError::Pixmap(pixmap)
-            });
+        if let Some(mask) = values.clip_mask.filter(|mask| *mask != 0) {
+            let (_, _, depth) = self.pixmap_info(mask).ok_or(XError::Pixmap(mask))?;
+            if depth != BITMAP_DEPTH {
+                return Err(XError::Match);
+            }
         }
         match values.font {
             Some(font) if !self.fonts.contains(&font) => Err(XError::Font(font)),
@@ -517,5 +549,118 @@ impl State {
         self.tile_cache.insert(pixmap, Rc::downgrade(&tile));
         self.live_tiles.push(Rc::downgrade(&tile));
         Ok(tile)
+    }
+}
+
+/// The most rectangles that a clip mask gives. A bigger mask is cut to its bounding rectangle.
+const MAX_MASK_RECTS: usize = 16384;
+
+/// Where the clip mask of a GC comes from: the bitmap and the clip origin.
+#[derive(Clone, Copy)]
+pub(super) struct ClipMask {
+    pixmap: u32,
+    origin: (i32, i32),
+}
+
+/// The set pixels of a bitmap as rectangles that do not overlap: the runs of each row, joined
+/// downwards while the next row has the same run.
+fn bitmap_rects(surface: &Surface, origin: (i32, i32)) -> Vec<IRect> {
+    let bounds = surface.bounds();
+    let mut done: Vec<IRect> = Vec::new();
+    // The rectangles that the row above still grows: (x0, x1, y0).
+    let mut open: Vec<(i32, i32, i32)> = Vec::new();
+    for y in bounds.y0..bounds.y1 {
+        let row = surface.row(y, bounds.x0, bounds.x1);
+        let mut runs: Vec<(i32, i32)> = Vec::new();
+        let mut start = None;
+        for (x, pixel) in row.as_chunks::<4>().0.iter().enumerate() {
+            let set = *pixel != [0; 4];
+            match (set, start) {
+                (true, None) => start = Some(x as i32),
+                (false, Some(from)) => {
+                    runs.push((from, x as i32));
+                    start = None;
+                }
+                _ => {}
+            }
+        }
+        if let Some(from) = start {
+            runs.push((from, bounds.x1 - bounds.x0));
+        }
+        let mut next = Vec::with_capacity(runs.len());
+        for run in runs {
+            match open.iter().position(|&(x0, x1, _)| (x0, x1) == run) {
+                Some(index) => next.push(open.swap_remove(index)),
+                None => next.push((run.0, run.1, y)),
+            }
+        }
+        for (x0, x1, y0) in open.drain(..) {
+            done.push(IRect::new(origin.0 + x0, origin.1 + y0, x1 - x0, y - y0));
+        }
+        open = next;
+        if done.len() + open.len() > MAX_MASK_RECTS {
+            return vec![IRect::new(
+                origin.0 + bounds.x0,
+                origin.1 + bounds.y0,
+                bounds.width(),
+                bounds.height(),
+            )];
+        }
+    }
+    for (x0, x1, y0) in open {
+        done.push(IRect::new(
+            origin.0 + x0,
+            origin.1 + y0,
+            x1 - x0,
+            bounds.y1 - y0,
+        ));
+    }
+    done
+}
+
+#[cfg(test)]
+mod clip_mask_tests {
+    use super::*;
+
+    fn bitmap(rows: &[&str]) -> Surface {
+        let mut surface = Surface::new(rows[0].len() as u16, rows.len() as u16);
+        for (y, row) in rows.iter().enumerate() {
+            for (x, c) in row.chars().enumerate() {
+                if c == '#' {
+                    surface.fill_rect(IRect::new(x as i32, y as i32, 1, 1), 1, 3, u32::MAX);
+                }
+            }
+        }
+        surface
+    }
+
+    fn area(rects: &[IRect]) -> i32 {
+        rects.iter().map(|r| r.width() * r.height()).sum()
+    }
+
+    #[test]
+    fn a_mask_becomes_rectangles_that_cover_its_set_pixels_once() {
+        let mask = bitmap(&["..##..", ".####.", ".####.", "..##.."]);
+        let rects = bitmap_rects(&mask, (0, 0));
+        assert_eq!(area(&rects), 2 + 4 + 4 + 2);
+        // The middle rows have the same run, so they are one rectangle.
+        assert!(rects.contains(&IRect::new(1, 1, 4, 2)), "{rects:?}");
+        assert!(rects.contains(&IRect::new(2, 0, 2, 1)));
+        assert!(rects.contains(&IRect::new(2, 3, 2, 1)));
+    }
+
+    #[test]
+    fn the_clip_origin_moves_the_rectangles() {
+        let mask = bitmap(&["#.", ".#"]);
+        let rects = bitmap_rects(&mask, (10, 20));
+        assert_eq!(
+            rects,
+            [IRect::new(10, 20, 1, 1), IRect::new(11, 21, 1, 1)].to_vec()
+        );
+    }
+
+    #[test]
+    fn an_empty_mask_gives_no_rectangles() {
+        assert!(bitmap_rects(&bitmap(&["...", "..."]), (0, 0)).is_empty());
     }
 }

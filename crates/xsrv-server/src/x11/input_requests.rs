@@ -35,6 +35,9 @@ fn check_modifiers(modifiers: u16) -> Result<(), XError> {
     }
 }
 
+/// The screen saver timeout and interval of Xorg, in seconds. The server never blanks the screen.
+pub(super) const SCREEN_SAVER_DEFAULT_SECONDS: u16 = 600;
+
 impl State {
     pub fn get_input_focus(&self, req: &Request) -> Result<Reply, XError> {
         req.reader().end()?;
@@ -506,6 +509,47 @@ impl State {
     pub fn grab_server(&self, req: &Request) -> Result<(), XError> {
         req.reader().end()?;
         Ok(())
+    }
+
+    /// SetScreenSaver: kept and given back by GetScreenSaver. The screen never blanks. -1 asks for
+    /// the default, as in Xorg.
+    pub fn set_screen_saver(&mut self, req: &Request) -> Result<(), XError> {
+        let mut r = req.reader();
+        let (timeout, interval) = (r.i16()?, r.i16()?);
+        let (blanking, exposures) = (r.u8()?, r.u8()?);
+        r.skip(2)?;
+        r.end()?;
+        if blanking > 2 {
+            return Err(XError::Value(blanking.into()));
+        }
+        if exposures > 2 {
+            return Err(XError::Value(exposures.into()));
+        }
+        for value in [timeout, interval] {
+            if value < -1 {
+                return Err(XError::Value(value as u32));
+            }
+        }
+        let default = |value: i16, normal: u16| if value < 0 { normal } else { value as u16 };
+        let keep = |setting: u8, normal: u8| if setting == 2 { normal } else { setting };
+        self.screen_saver = (
+            default(timeout, SCREEN_SAVER_DEFAULT_SECONDS),
+            default(interval, SCREEN_SAVER_DEFAULT_SECONDS),
+            keep(blanking, 1),
+            keep(exposures, 1),
+        );
+        Ok(())
+    }
+
+    pub fn get_screen_saver(&self, req: &Request) -> Result<Reply, XError> {
+        req.reader().end()?;
+        let (timeout, interval, blanking, exposures) = self.screen_saver;
+        let mut w = Writer::new(req.endian);
+        w.u16(timeout);
+        w.u16(interval);
+        w.u8(blanking);
+        w.u8(exposures);
+        Ok(Reply::new(0, w))
     }
 
     pub fn bell(&self, req: &Request) -> Result<(), XError> {

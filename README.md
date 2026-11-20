@@ -58,7 +58,7 @@ the details; [docs/security.md](docs/security.md) says who can reach what.
 On a Debian 13 or Ubuntu 24.04 machine (x86_64), with the package from `make deb` or a release:
 
 ```
-sudo apt install ./xsrv-web_0.1.0_amd64.deb
+sudo apt install ./xsrv-web_0.1.5_amd64.deb
 sudo systemctl enable --now xsrv-web
 sudo xsrv-web token
 ```
@@ -95,7 +95,7 @@ both from the release tarball and adds them to your image:
 
 ```dockerfile
 FROM debian:trixie-slim AS xsrv
-ARG XSRV_VERSION=0.1.0
+ARG XSRV_VERSION=0.1.5
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
  && rm -rf /var/lib/apt/lists/* \
  && curl -fsSL "https://github.com/csegura/xsrv_web/releases/download/v${XSRV_VERSION}/xsrv-web-${XSRV_VERSION}-linux-x86_64.tar.gz" \

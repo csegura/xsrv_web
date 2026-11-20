@@ -18,6 +18,7 @@ mod ext_shape;
 mod ext_shm;
 mod ext_xfixes;
 mod ext_xfixes_region;
+mod ext_xinerama;
 mod ext_xkb;
 mod extensions;
 mod font;

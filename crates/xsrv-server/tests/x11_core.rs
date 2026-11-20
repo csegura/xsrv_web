@@ -4597,6 +4597,251 @@ fn a_maximized_window_fills_the_screen_and_follows_a_resize() {
     assert_eq!((g.width, g.height), (120, 80), "a dialog keeps its size");
 }
 
+/// An answer about a selection that nobody owns carries the time of the request as the client wrote
+/// it. CurrentTime stays 0: Xt matches the answer to its request by the time, and the Common Desktop
+/// Environment waited for ever when it got a real time instead.
+#[test]
+fn convert_selection_answers_with_the_time_of_the_request() {
+    let (path, _display) = start_server_with_display("selection-time");
+    let conn = connect(&path);
+    let (window, _gc) = mapped_window(&conn, 0, 0, 10);
+    let selection = conn
+        .intern_atom(false, b"NOBODY_OWNS_THIS")
+        .unwrap()
+        .reply()
+        .unwrap()
+        .atom;
+    let target = conn
+        .intern_atom(false, b"STRING")
+        .unwrap()
+        .reply()
+        .unwrap()
+        .atom;
+    for time in [0u32, 1234] {
+        conn.convert_selection(window, selection, target, 0u32, time)
+            .unwrap();
+        conn.flush().unwrap();
+        let Event::SelectionNotify(notify) =
+            wait_for_event(&conn, |e| matches!(e, Event::SelectionNotify(_)))
+        else {
+            unreachable!()
+        };
+        assert_eq!(
+            (notify.time, notify.property, notify.selection),
+            (time, 0, selection)
+        );
+    }
+}
+
+/// dtsession of CDE sets the screen saver and installs a colormap at its start; both got BadRequest.
+#[test]
+fn screen_saver_and_colormap_requests_work() {
+    use x11rb::protocol::xproto::{Blanking, Exposures};
+    let (path, _display) = start_server_with_display("screen-saver");
+    let conn = connect(&path);
+    let root = conn.setup().roots[0].root;
+    let colormap = conn.setup().roots[0].default_colormap;
+
+    let before = conn.get_screen_saver().unwrap().reply().unwrap();
+    assert_eq!((before.timeout, before.interval), (600, 600));
+    conn.set_screen_saver(300, 120, Blanking::NOT_PREFERRED, Exposures::NOT_ALLOWED)
+        .unwrap()
+        .check()
+        .unwrap();
+    let after = conn.get_screen_saver().unwrap().reply().unwrap();
+    assert_eq!((after.timeout, after.interval), (300, 120));
+    assert_eq!(after.prefer_blanking, Blanking::NOT_PREFERRED);
+    assert_eq!(after.allow_exposures, Exposures::NOT_ALLOWED);
+    conn.set_screen_saver(-1, -1, Blanking::DEFAULT, Exposures::DEFAULT)
+        .unwrap()
+        .check()
+        .unwrap();
+    let reset = conn.get_screen_saver().unwrap().reply().unwrap();
+    assert_eq!((reset.timeout, reset.interval), (600, 600));
+    let bad = conn
+        .set_screen_saver(-5, 0, Blanking::DEFAULT, Exposures::DEFAULT)
+        .unwrap()
+        .check();
+    assert_eq!(error_kind(bad), ErrorKind::Value);
+
+    conn.install_colormap(colormap).unwrap().check().unwrap();
+    conn.uninstall_colormap(colormap).unwrap().check().unwrap();
+    let installed = conn
+        .list_installed_colormaps(root)
+        .unwrap()
+        .reply()
+        .unwrap();
+    assert_eq!(installed.cmaps, [colormap]);
+    let other = conn.install_colormap(0x7777_7777).unwrap().check();
+    assert_eq!(error_kind(other), ErrorKind::Colormap);
+}
+
+/// Xpm (the icons of CDE) and cairo draw through a clip mask that is a bitmap. The server refused it
+/// with BadImplementation, so the icons were not drawn.
+#[test]
+fn a_clip_mask_bitmap_limits_the_drawing() {
+    let (path, display) = start_server_with_display("clip-mask");
+    let conn = connect(&path);
+    let root = conn.setup().roots[0].root;
+    let (window, _gc) = mapped_window(&conn, 100, 100, 40);
+
+    // A bitmap of 8x4 with two blocks set: columns 1 and 2 of rows 0 and 1, and column 6 of row 3.
+    let bitmap = conn.generate_id().unwrap();
+    conn.create_pixmap(1, bitmap, root, 8, 4).unwrap();
+    let ink = conn.generate_id().unwrap();
+    conn.create_gc(ink, bitmap, &CreateGCAux::new().foreground(1).background(0))
+        .unwrap();
+    let rect = |x, y, width, height| Rectangle {
+        x,
+        y,
+        width,
+        height,
+    };
+    conn.poly_fill_rectangle(bitmap, ink, &[rect(1, 0, 2, 2), rect(6, 3, 1, 1)])
+        .unwrap();
+
+    let gc = conn.generate_id().unwrap();
+    conn.create_gc(
+        gc,
+        window,
+        &CreateGCAux::new()
+            .foreground(0x00FF_0000)
+            .clip_mask(bitmap)
+            .clip_x_origin(10)
+            .clip_y_origin(20),
+    )
+    .unwrap()
+    .check()
+    .expect("a bitmap is a clip mask");
+    conn.poly_fill_rectangle(window, gc, &[rect(0, 0, 40, 40)])
+        .unwrap();
+    sync(&conn);
+    // The screen pixels are in blue, green, red order.
+    let red = [0, 0, 0xFF];
+    let at = |x: usize, y: usize| screen_pixel(&display, 100 + x, 100 + y);
+    // The mask is moved by the clip origin (10, 20).
+    assert_eq!((at(11, 20), at(12, 21), at(16, 23)), (red, red, red));
+    assert_ne!(at(10, 20), red, "column 0 is not set");
+    assert_ne!(at(13, 20), red, "column 3 is not set");
+    assert_ne!(at(11, 22), red, "row 2 is not set");
+    assert_ne!(at(5, 5), red, "outside the mask nothing is drawn");
+
+    // A new origin moves the same mask.
+    conn.change_gc(gc, &ChangeGCAux::new().clip_x_origin(0).clip_y_origin(0))
+        .unwrap();
+    conn.poly_fill_rectangle(window, gc, &[rect(0, 0, 40, 40)])
+        .unwrap();
+    sync(&conn);
+    assert_eq!((at(1, 0), at(2, 1), at(6, 3)), (red, red, red));
+
+    // Clearing the mask draws everywhere again, and a mask that is not a bitmap is refused.
+    conn.change_gc(gc, &ChangeGCAux::new().clip_mask(0u32))
+        .unwrap();
+    conn.poly_fill_rectangle(window, gc, &[rect(30, 30, 5, 5)])
+        .unwrap();
+    sync(&conn);
+    assert_eq!(at(32, 32), red);
+    let color = conn.generate_id().unwrap();
+    conn.create_pixmap(24, color, root, 4, 4).unwrap();
+    let refused = conn
+        .change_gc(gc, &ChangeGCAux::new().clip_mask(color))
+        .unwrap()
+        .check();
+    assert_eq!(error_kind(refused), ErrorKind::Match);
+}
+
+/// `xset fp+` and `xprop -root` use these three requests; the Common Desktop Environment runs both
+/// at the start of a session and stops when they fail.
+#[test]
+fn font_path_and_property_lists_work() {
+    use x11rb::protocol::xproto::Str;
+    let (path, _display) = start_server_with_display("font-path");
+    let conn = connect(&path);
+    let root = conn.setup().roots[0].root;
+
+    let before = conn.get_font_path().unwrap().reply().unwrap();
+    assert!(!before.path.is_empty(), "a font path is always given");
+    let name = |text: &str| Str {
+        name: text.as_bytes().to_vec(),
+    };
+    let wanted = [name("/usr/dt/config/xfonts"), name("built-ins")];
+    conn.set_font_path(&wanted).unwrap().check().unwrap();
+    let after = conn.get_font_path().unwrap().reply().unwrap();
+    let names = |list: &[Str]| list.iter().map(|s| s.name.clone()).collect::<Vec<_>>();
+    assert_eq!(names(&after.path), names(&wanted));
+    let too_many: Vec<Str> = (0..65).map(|i| name(&format!("/font/{i}"))).collect();
+    let refused = conn.set_font_path(&too_many).unwrap().check();
+    assert_eq!(error_kind(refused), ErrorKind::Value);
+
+    let one = conn
+        .intern_atom(false, b"XSRV_TEST_ONE")
+        .unwrap()
+        .reply()
+        .unwrap()
+        .atom;
+    let two = conn
+        .intern_atom(false, b"XSRV_TEST_TWO")
+        .unwrap()
+        .reply()
+        .unwrap()
+        .atom;
+    let empty = conn.list_properties(root).unwrap().reply().unwrap();
+    assert!(!empty.atoms.contains(&one));
+    for atom in [two, one] {
+        conn.change_property8(PropMode::REPLACE, root, atom, AtomEnum::STRING, b"x")
+            .unwrap();
+    }
+    let listed = conn.list_properties(root).unwrap().reply().unwrap();
+    assert!(listed.atoms.contains(&one) && listed.atoms.contains(&two));
+    let mut sorted = listed.atoms.clone();
+    sorted.sort_unstable();
+    assert_eq!(listed.atoms, sorted, "the order is fixed");
+    let bad = conn.list_properties(0x7777_7777).unwrap().reply();
+    assert!(matches!(bad, Err(ReplyError::X11Error(e)) if e.error_kind == ErrorKind::Window));
+}
+
+/// The Common Desktop Environment asks for XINERAMA at the start of its session manager, and waits
+/// for the answer. The screens are the virtual monitors of RANDR.
+#[test]
+fn xinerama_lists_the_virtual_monitors() {
+    use x11rb::protocol::xinerama::ConnectionExt as _;
+    let (path, _display) = start_server_with_options(
+        "xinerama",
+        x11::Options {
+            monitors: 2,
+            ..x11::Options::default()
+        },
+    );
+    let conn = connect(&path);
+    let root = conn.setup().roots[0].root;
+    let version = conn.xinerama_query_version(1, 1).unwrap().reply().unwrap();
+    assert_eq!((version.major, version.minor), (1, 1));
+    assert_eq!(conn.xinerama_is_active().unwrap().reply().unwrap().state, 1);
+    let state = conn.xinerama_get_state(root).unwrap().reply().unwrap();
+    assert_eq!((state.state, state.window), (1, root));
+    let count = conn
+        .xinerama_get_screen_count(root)
+        .unwrap()
+        .reply()
+        .unwrap();
+    assert_eq!((count.screen_count, count.window), (2, root));
+    let screens = conn.xinerama_query_screens().unwrap().reply().unwrap();
+    let boxes: Vec<_> = screens
+        .screen_info
+        .iter()
+        .map(|s| (s.x_org, s.y_org, s.width, s.height))
+        .collect();
+    assert_eq!(boxes, [(0, 0, 320, 480), (320, 0, 320, 480)]);
+    let size = conn
+        .xinerama_get_screen_size(root, 1)
+        .unwrap()
+        .reply()
+        .unwrap();
+    assert_eq!((size.width, size.height, size.screen), (320, 480, 1));
+    let too_far = conn.xinerama_get_screen_size(root, 2).unwrap().reply();
+    assert!(matches!(too_far, Err(ReplyError::X11Error(e)) if e.error_kind == ErrorKind::Value));
+}
+
 #[test]
 fn randr_reports_virtual_monitors_side_by_side() {
     use x11rb::protocol::randr::{ConnectionExt as _, Rotation};
@@ -5502,6 +5747,63 @@ fn replay_pointer_gives_the_click_to_the_window_below_the_grab() {
         0,
         "the replayed press does not show its own button as down"
     );
+    button(&display, 1, false);
+}
+
+/// dtwm (Motif) grabs the buttons of a client window with an event mask of ButtonRelease only, and
+/// waits for the press to give the focus and to call AllowEvents. Xorg sends the press that starts a
+/// passive grab whatever the mask says; the server held it back, so a click never gave the focus.
+#[test]
+fn a_passive_grab_gets_its_press_although_its_mask_has_only_the_release() {
+    let (path, display) = start_server_with_display("grab-press");
+    let manager = connect(&path);
+    let app = connect(&path);
+    let root = app.setup().roots[0].root;
+    let window = input_window(&app, root, (100, 100, 100), EventMask::BUTTON_PRESS);
+    sync(&app);
+    manager
+        .grab_button(
+            false,
+            window,
+            EventMask::BUTTON_RELEASE,
+            GrabMode::SYNC,
+            GrabMode::ASYNC,
+            0u32,
+            0u32,
+            x11rb::protocol::xproto::ButtonIndex::M1,
+            ModMask::ANY,
+        )
+        .unwrap()
+        .check()
+        .unwrap();
+    pointer_to(&display, 150, 150);
+    sync(&app);
+    thread::sleep(Duration::from_millis(50));
+    drain_events(&app);
+    button(&display, 1, true);
+    let Event::ButtonPress(taken) =
+        wait_for_event(&manager, |e| matches!(e, Event::ButtonPress(_)))
+    else {
+        unreachable!()
+    };
+    assert_eq!((taken.detail, taken.event), (1, window));
+    sync(&app);
+    assert!(
+        app.poll_for_event().unwrap().is_none(),
+        "the application sees nothing while the grab holds the press"
+    );
+    manager
+        .allow_events(
+            x11rb::protocol::xproto::Allow::REPLAY_POINTER,
+            x11rb::CURRENT_TIME,
+        )
+        .unwrap();
+    manager.flush().unwrap();
+    let Event::ButtonPress(replayed) = wait_for_event(&app, |e| matches!(e, Event::ButtonPress(_)))
+    else {
+        unreachable!()
+    };
+    assert_eq!((replayed.detail, replayed.event), (1, window));
     button(&display, 1, false);
 }
 

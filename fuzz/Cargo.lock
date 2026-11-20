@@ -870,7 +870,7 @@ dependencies = [
 
 [[package]]
 name = "wire"
-version = "0.1.0"
+version = "0.1.5"
 
 [[package]]
 name = "wit-bindgen"
@@ -894,7 +894,7 @@ dependencies = [
 
 [[package]]
 name = "xsrv-server"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "axum",
  "bytes",

@@ -966,7 +966,7 @@ dependencies = [
 
 [[package]]
 name = "wire"
-version = "0.1.0"
+version = "0.1.5"
 
 [[package]]
 name = "wit-bindgen"
@@ -993,7 +993,7 @@ checksum = "ea6fc2961e4ef194dcbfe56bb845534d0dc8098940c7e5c012a258bfec6701bd"
 
 [[package]]
 name = "xsrv-server"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "axum",
  "bytes",
@@ -1012,7 +1012,7 @@ dependencies = [
 
 [[package]]
 name = "xsrv-wasm"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "lz4_flex",
  "ruzstd",

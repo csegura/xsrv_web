@@ -165,7 +165,10 @@ impl State {
         if property != NONE_ATOM {
             self.require_atom(property)?;
         }
-        let time = if time == 0 { self.timestamp() } else { time };
+        // The time goes to the owner and back in the events as the client wrote it, CurrentTime
+        // (0) included, as Xorg does. A toolkit (Xt) matches the answer to its request by it, and
+        // waits for ever for an answer that has another time: the Common Desktop Environment stops
+        // at its start on a SelectionNotify of a selection that nobody owns.
         match self.selections.get(&selection).copied() {
             Some(owner) if owner.client == super::clipboard::SERVER_CLIENT => {
                 self.serve_page_clipboard(req.client, requestor, selection, target, property, time);

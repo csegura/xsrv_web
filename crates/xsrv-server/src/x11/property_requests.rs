@@ -136,6 +136,22 @@ impl State {
         Ok(())
     }
 
+    /// ListProperties: the atoms of the properties that a window has, in a fixed order.
+    pub fn list_properties(&mut self, req: &Request) -> Result<Reply, XError> {
+        let mut r = req.reader();
+        let window = r.u32()?;
+        r.end()?;
+        let mut atoms: Vec<u32> = self.window(window)?.properties.keys().copied().collect();
+        atoms.sort_unstable();
+        let mut w = Writer::new(req.endian);
+        w.u16(atoms.len() as u16);
+        w.zeros(22);
+        for atom in atoms {
+            w.u32(atom);
+        }
+        Ok(Reply::new(0, w))
+    }
+
     pub fn get_property(&mut self, req: &Request) -> Result<Reply, XError> {
         let delete = req.detail != 0;
         let mut r = req.reader();

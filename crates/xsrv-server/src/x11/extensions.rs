@@ -28,6 +28,7 @@ pub const RENDER: u8 = 139;
 pub const BIG_REQUESTS: u8 = 133;
 pub const XC_MISC: u8 = 134;
 pub const XKEYBOARD: u8 = 135;
+pub const XINERAMA: u8 = 141;
 
 /// The largest request after BIG-REQUESTS is enabled, in bytes.
 pub const MAX_BIG_REQUEST_BYTES: usize = 4 << 20;
@@ -89,6 +90,14 @@ pub const EXTENSIONS: &[ExtensionInfo] = &[
         first_error: 134,
         events: 0,
         errors: 5,
+    },
+    ExtensionInfo {
+        name: "XINERAMA",
+        major_opcode: XINERAMA,
+        first_event: 0,
+        first_error: 0,
+        events: 0,
+        errors: 0,
     },
     ExtensionInfo {
         name: "XKEYBOARD",
@@ -177,6 +186,7 @@ impl State {
             BIG_REQUESTS => self.big_requests(req).map(Some),
             XC_MISC => self.xc_misc(req).map(Some),
             RENDER => self.render_request(req),
+            XINERAMA => self.xinerama_request(req),
             XKEYBOARD if self.offers_xkb(req.endian) => self.xkb_request(req),
             _ => Err(XError::Request),
         };

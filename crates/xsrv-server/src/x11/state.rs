@@ -162,6 +162,10 @@ pub struct State {
     pub(super) pixmaps: HashMap<u32, Pixmap>,
     pub(super) gcs: HashMap<u32, Gc>,
     pub(super) clips: HashMap<u32, Vec<IRect>>,
+    /// What SetScreenSaver set: timeout, interval, prefer blanking and allow exposures.
+    pub(super) screen_saver: (u16, u16, u8, u8),
+    /// The bitmap and the origin that the clip of a GC was made from, when it was a clip mask.
+    pub(super) clip_masks: HashMap<u32, super::graphics_requests::ClipMask>,
     /// The XFIXES regions, as rectangles that do not overlap.
     pub(super) regions: HashMap<u32, Vec<IRect>>,
     pub(super) selections: HashMap<u32, Selection>,
@@ -174,6 +178,9 @@ pub struct State {
     /// For each client, the windows that go back to the root when it leaves, and whether to map them.
     pub(super) save_sets: HashMap<ClientId, HashMap<u32, bool>>,
     pub(super) shm_segments: HashMap<u32, ShmSegment>,
+    /// The font path that clients set with SetFontPath (`xset fp+`). The server has one built-in
+    /// font, so the path is only kept and given back.
+    pub(super) font_path: Vec<Vec<u8>>,
     /// Pictures and glyph sets of the RENDER extension.
     pub(super) render: super::render::RenderState,
     /// (client, selection, window) to the mask of events that the client wants for the window.
@@ -263,6 +270,13 @@ impl State {
             pixmaps: HashMap::new(),
             gcs: HashMap::new(),
             clips: HashMap::new(),
+            screen_saver: (
+                super::input_requests::SCREEN_SAVER_DEFAULT_SECONDS,
+                super::input_requests::SCREEN_SAVER_DEFAULT_SECONDS,
+                1,
+                1,
+            ),
+            clip_masks: HashMap::new(),
             regions: HashMap::new(),
             selections: HashMap::new(),
             clipboard: ClipboardData::default(),
@@ -270,6 +284,7 @@ impl State {
             randr_listeners: HashMap::new(),
             save_sets: HashMap::new(),
             shm_segments: HashMap::new(),
+            font_path: vec![b"built-ins".to_vec()],
             render: Default::default(),
             selection_watchers: HashMap::new(),
             hidden_cursors: HashSet::new(),

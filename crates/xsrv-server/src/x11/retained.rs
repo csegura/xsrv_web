@@ -88,6 +88,7 @@ impl State {
             self.release_pixmap(id, Some(client));
             self.gcs.remove(&id);
             self.clips.remove(&id);
+            self.clip_masks.remove(&id);
             self.fonts.remove(&id);
             self.cursors.remove(&id);
             self.forget_region(id);

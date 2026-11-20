@@ -24,6 +24,25 @@ fn write_color(w: &mut Writer, (red, green, blue): Rgb16) {
 }
 
 impl State {
+    /// InstallColormap and UninstallColormap: the only colormap is always installed.
+    pub fn install_colormap(&self, req: &Request) -> Result<(), XError> {
+        let mut r = req.reader();
+        require_default_colormap(r.u32()?)?;
+        r.end().map_err(XError::from)
+    }
+
+    pub fn list_installed_colormaps(&self, req: &Request) -> Result<Reply, XError> {
+        let mut r = req.reader();
+        let window = r.u32()?;
+        r.end()?;
+        self.window(window)?;
+        let mut w = Writer::new(req.endian);
+        w.u16(1);
+        w.zeros(22);
+        w.u32(DEFAULT_COLORMAP);
+        Ok(Reply::new(0, w))
+    }
+
     pub fn alloc_color(&self, req: &Request) -> Result<Reply, XError> {
         let mut r = req.reader();
         require_default_colormap(r.u32()?)?;

@@ -26,7 +26,7 @@ make deb    # dist/xsrv-web_<version>_amd64.deb (needs dpkg-deb)
 Three commands on the machine that runs the X programs:
 
 ```
-sudo apt install ./xsrv-web_0.1.0_amd64.deb
+sudo apt install ./xsrv-web_0.1.5_amd64.deb
 sudo systemctl enable --now xsrv-web
 sudo xsrv-web token
 ```
@@ -94,8 +94,8 @@ as a normal user, and a client without the X cookie is refused.
 ## Tarball
 
 ```
-tar xzf xsrv-web-0.1.0-linux-x86_64.tar.gz
-cd xsrv-web-0.1.0-linux-x86_64
+tar xzf xsrv-web-0.1.5-linux-x86_64.tar.gz
+cd xsrv-web-0.1.5-linux-x86_64
 ./start.sh
 ```
 
